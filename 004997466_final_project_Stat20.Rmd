@@ -1,0 +1,231 @@
+---
+title: "004997466_final_project_Stat20"
+author: "Yongqian Li"
+date: "2019/7/31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(dplyr)
+library(tidytext)
+library(textdata)
+library(ggplot2)
+```
+
+
+## 1. Statistical summary/review of the star_ratings for the book and a sentiment analysis
+
+### (a).
+
+Loading data:
+
+```{r}
+Amazon_final3 <- load("AmazonFinal3.RData")
+Amazon <- inner_join(Amazon3A,Amazon3B,by="review_id")
+```
+
+Firstly, we use summary() to check outliers and problems:
+
+```{r}
+summary(Amazon)
+```
+
+According to the summary, the maxima of "helpful_votes" and "total_votes" are very large, but they should not be removed since they are valid values (there may be several reviews that are there extremely popular). However, there are NA's in "review_date", which is column 14. Therefore, the dataset need to be cleaned before further analysis:
+
+```{r}
+Amazon <- Amazon[complete.cases(Amazon[ , 14]),]
+summary(Amazon)
+```
+
+Now the dataset has gotten rid of NA's in "review_date". Then, the data of books with at least 50 reviews are extracted, and then with the data sorted by mean ratings, the 2 books with lowest ratings can be found:
+
+```{r}
+books_rc_over50 <- summarise(group_by(Amazon,product_title),count=n(),mean_r=mean(star_rating)) %>% subset(count>=50)
+
+lowest2 <- head(books_rc_over50[order(books_rc_over50$mean_r),],n=2)
+lowest2
+```
+
+The 2 books with lowest mean rating are: "It Could Happen To Anyone: Why Battered Women Stay" and "Allegiant (Divergent Series)".
+
+The 2 top-rated books can also be found at the other end of the sorted data:
+
+```{r}
+highest2 <- tail(books_rc_over50[order(books_rc_over50$mean_r),],n=2)
+highest2
+```
+
+The 2 books with highest mean rating are: "Rush Revere and the American Revolution: Time-Travel Adventures With Exceptional Americans" and "A Higher Call: An Incredible True Story of Combat and Chivalry in the War-Torn Skies of World War II".
+
+
+### (b).
+
+Firstly, the sentiments of each row is calculated:
+
+```{r}
+sentiment  <-  Amazon %>%
+    unnest_tokens(word, review_body) %>%
+    inner_join(get_sentiments("afinn"), by = "word") %>%
+    group_by(review_id) %>%
+    summarize(sentiment = mean(value), words = n()) 
+summary(sentiment)
+```
+
+Inner joining the data with Amazon:
+
+```{r}
+Amazon_senti <- inner_join(Amazon,sentiment,by="review_id")
+```
+
+Then the data of the reviews of the 4 books mentioned above need to be extracted from the joint dataset, and they are stored in different data frames for easier analysis:
+
+```{r}
+book1_top <- subset(Amazon_senti, product_title==highest2[[1]][2],words>=5)
+book2_top <- subset(Amazon_senti, product_title==highest2[[1]][1],words>=5)
+book1_lowest <- subset(Amazon_senti, product_title==lowest2[[1]][1],words>=5)
+book2_lowest <- subset(Amazon_senti, product_title==lowest2[[1]][2],words>=5)
+
+```
+
+Adding the product of "sentiment" and "words" of each row will give the total sentiment score of the reviews of this book. Additionally, if this sum is divided by the sum of the column "words", we can get the average sentiment of each word within these reviews. These two numbers will help us understand the overall attitude of the reviewers towards this book:
+
+```{r}
+sum(book1_top$sentiment*book1_top$words)
+sum(book1_top$sentiment*book1_top$words)/sum(book1_top$words)
+```
+
+According to the results, this book not only has a high total sentiment score, but also has an average sentiment per word of about 2.60, which is very high since the result did not exclude the neutral words and negative words.
+
+Similarly, for the second highest rated book:
+
+```{r}
+sum(book2_top$sentiment*book2_top$words)
+sum(book2_top$sentiment*book2_top$words)/sum(book2_top$words)
+```
+The second highest rated book also has a high total sentiment score, but its average sentiment per word of about 0.74, which is lower than the value of the highest rated book.
+
+
+```{r}
+sum(book2_lowest$sentiment*book2_lowest$words)
+sum(book2_lowest$sentiment*book2_lowest$words)/sum(book2_lowest$words)
+```
+
+Sprisingly, the second lowest rated book still has a positive high total sentiment score. Its average sentiment per word of about 0.02, which implies that on average, the sentiments of words in the reviews are netural.
+
+
+```{r}
+sum(book1_lowest$sentiment*book1_lowest$words)
+sum(book1_lowest$sentiment*book1_lowest$words)/sum(book1_lowest$words)
+```
+
+The results are what is expected: the total sentimental score is a large negative number, and the average sentiment per word is also negative. These results show that the overall attitude of reviewers towards the lowest rated book is much more negative than that towards the second lowest rated book. The results also fits the mean ratings: the mean rating of the second lowest rated book is 2.450000, while the mean rating of the lowest rated book is 1.233333, which implies most reviewers give a rating of 1, the lowest rating possible.
+
+It is possible that the reviews of the 2 books with highest ratings receiving many helpful votes have higher sentiments, while the reviews of the 2 books with lowest ratings receiving many helpful votes have low sentiments. Therefore, I am interested in the correlation between sentiment and number of helpful votes. The correlation coefficients of helpful_votes versus sentiment of these 4 books can be calculated, from the top-rated book to the lowest-rated book:
+
+```{r}
+cor(book1_top$sentiment, book1_top$helpful_votes)
+
+cor(book2_top$sentiment, book2_top$helpful_votes)
+
+cor(book1_lowest$sentiment, book1_lowest$helpful_votes)
+
+cor(book2_lowest$sentiment, book2_lowest$helpful_votes)
+
+```
+
+According to the results, the correlations are all weak, and surprisingly the second highest-rated book has negative correlation of helpful_votes versus sentiment. The correlations of helpful_votes versus sentiment of the 2 lowest-rated books are negative as expected, but the coefficient value of the second lowest-rated book is close to 0.
+
+The correlation coefficients of star_rating versus sentiment can also be calculated:
+
+```{r}
+cor(book1_top$sentiment, book1_top$star_rating)
+
+cor(book2_top$sentiment, book2_top$star_rating)
+
+cor(book1_lowest$sentiment, book1_lowest$star_rating)
+
+cor(book2_lowest$sentiment, book2_lowest$star_rating)
+
+```
+
+For the reviews of the 2 top-rated books, the correlations between helpful_votes and sentiment are weak. For the 2 lowest-rated books, the correlations between helpful_votes and sentiment are stronger. Specfically, the lowest-rated books's correlation coefficient is about 0.59, which is a relatively strong correlation. Each book's sentiments and star_ratings are positively correlated.
+
+
+
+## 2. Visualization
+
+For this part, my idea is to test that for each rating from 1 to 5, whether there is a correlation between the number of helpful rates and the sentiments. Additionally, the data is further divided into the reviewers of the Vine program and other reviewers. log(helpful_votes) is used in this case to narrow the wide differences among the numbers of helpful votes. 
+
+```{r,fig.width=7, fig.height=7}
+ggplot(subset(Amazon_senti,helpful_votes>0), aes(x = sentiment, y = log(helpful_votes), color = factor(vine)))+
+    geom_point(alpha = 0.25)+
+    geom_smooth(method = "lm",colour="blue")+
+    facet_grid(star_rating~vine, margins = TRUE)+
+    labs(x = "Sentiments", y = "log(helpful votes)")+
+    ggtitle("log(helpful votes) versus Sentiments in Each Rating of Vine and Other Reviewers")
+```
+
+
+The results are interesting. For the low ratings from 1 to 3, there are almost no correlations between the number of helpful votes and sentiments in both the data of the Vine program and the data of the others. However, for the high ratings of 4 and 5, there are negative correlations between the number of helpful votes and sentiments. There might be many factors contributing to these results. One factor is that for the books with high ratings, there might be many simple reviews of short praise, and these reviews are not helpful comparing to longer, meaningful reviews talking about the contents of the books and the authors. For those longer reviews, they have to contain nutural words and even words with negative sentiments if the reviewers are tallking about the contents. Therefore, the negative correlation is reasonable.
+
+Additionally, the reviewers of the Vine program do not receive more helpful votes in their reviews. Most of their reviews also receive few helpful votes. Additionally, the reviewers of the Vine program tend to write more netually, so they seldom produce reviews with very high or very low sentiments.
+
+The plot also show that the reviewers of the Vine program wrote reviews more nuturally than the others giving the same star rating. This is reasonable beacuse they are responsible for writing good reviews, so they should not be too sentimental. They also tend to not give ratings of 1 or 2. One possible reason is that they are less likely to be given products of low ratings because the vendors of those products are less likely to submit the products to the program. Another possible reason is that reviewers of the Vine program are relatively neutral raters, since they are the representative reviewers. This fact implies that probably the Vine program works as Amazon expected, but maybe they should also test and review more products with low ratings.
+
+
+## 3. Further exploration
+
+#### hypothesis: 
+The reviewers who usually write long reviews are usually verified purchasers and tend to more helpful reviews.
+
+#### Outline and pseudocode
+
+1. Create additional variables
+Firstly I will create a variable in Amazon which is the character count of the review body and a variable of the proportion of helpful votes among all votes, and save as Amazon2.
+
+2. Examine review lengths
+Secondly I will examine the distribution of review lengths, and get Q3.
+
+3. Extract reviewers    
+Then I will extract the data of specific reviewers who have more than 5 reviews together with their mean review lengths and mean proportion of helpful votes. 
+
+4. Calculate results
+A subset of the chosen reviewers will be created to only contain reviewers with average review length larger than Q3 of review lengths. Another subset of the other reviews will also be created. Then, we will get the average of mean proportion of helpful votes of them and that of the others.
+
+5. Compare results
+Finally I would test the null hypothesis that the average of mean proportion of helpful votes of these reviewers is equal to the average of mean proportion of helpful votes of the others.
+
+
+#### Implementation of R code
+
+Steps 1, 2:
+```{r}
+Amazon2 <- Amazon %>%
+  mutate(length = nchar(review_body), proportion_helpful = helpful_votes/total_votes)
+Amazon2 <- Amazon2[!is.na(Amazon2$proportion_helpful),]
+summary(Amazon2$length)
+```
+
+Therefore, the 3rd Quotile of review lengths is 697.0
+
+Steps 3, 4:
+```{r}
+chosen_reviewers<-summarise(group_by(Amazon2,customer_id.x),count=n(),mean_l=mean(length),mean_p=mean(proportion_helpful)) %>% subset(count>=5)
+
+others<-subset(chosen_reviewers, mean_l<697.0)
+chosen_reviewers2<-subset(chosen_reviewers, mean_l>=697.0)
+
+mean(chosen_reviewers2$mean_p)
+mean(others$mean_p)
+```
+
+The mean of the proportion is about  0.7917253. It is larger than the mean of helpful proportions of votes of other reviewers' reviews, which is 0.6529778. 
+
+Step 5:
+```{r}
+t.test(chosen_reviewers$mean_p, others$mean_p)
+```
+
+According to the result of the t-test, I can reject the null hypothesis and conclude that the proportions of helpful votes of the chosen reviewers who write relatively long reviews are larger than the proportions of the others. This result supports my hypothesis.
